@@ -1,4 +1,13 @@
-import time, requests, webbrowser, html, re
+#!/usr/bin/env python3
+'''
+    File name: course_scraper.py
+    Author: Jazib Dawre <jazibdawre@gmail.com>
+    Date created: 28/05/2020
+    Date last modified: 28/05/2020
+    Python Version: 3.8
+'''
+
+import time, requests, webbrowser, re
 from datetime import date
 from bs4 import BeautifulSoup
 
@@ -48,23 +57,25 @@ def clean_course_list(course_names, course_links, all_course_names=None):
                 pass    #print(f"Course not Enrolled: {course_names[i]}")       use this for detailed output
             except Exception as e:
                 print(f"Error in checking against already enrolled courses for '{course_names[i]}'.\nError: {e}")
+        
         #Removing Enrolled and Expired courses
-        ##Somethings wrong here
-        # print("got here")
-        # print(len(course_names), len(course_links))
-        # print(course_names, course_links)
-        # course_names_temp, course_links_temp = zip(*((x, y) for x, y in zip(course_names, course_links) if "Enrolled" not in y and 'Expired' not in y))
-        # course_names=list(course_names_temp)
-        # course_links=list(course_links_temp)
+        try:
+            course_names_temp, course_links_temp = zip(*((x, y) for x, y in zip(course_names, course_links) if "Enrolled" not in y and 'Expired' not in y and 'Error' not in y))
+            course_names=list(course_names_temp)
+            course_links=list(course_links_temp)
+        except ValueError:
+            course_names, course_links = [], []
+        except Exception as e:
+            print(f"\nError in zip cleaning coursr list.\nError is: {e}")
     except Exception as e:
-        print(f"\nError in cleaning course list.\nError is: {e}\n{type(e).__name__}\n")
+        print(f"\nError in cleaning course list.\nError is: {e}")
     finally:
         return course_names, course_links
 
 def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
     
     if no>page_limit:        #Scrape only till page 5
-        print(f"\nPage Limit Exceeded. Stopping search\n")
+        print(f"\nPage Limit Exceeded. Stopping search")
         return [],[]
     
     page = requests.get(target_url.format(no=no))     #Default Start is homepage
@@ -164,7 +175,7 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
             course_links += course_links_temp
             course_names += course_names_temp
         else:
-            print(f"\nStopping search. All non-expired/unenrolled courses indexed\n")
+            print(f"\nStopping search. All non-expired/unenrolled courses indexed")
 
     except Exception as e:
         print(f"\nWebpage with url: {target_url.format(no=no)} had an error.\nError: {e}\n")
@@ -176,6 +187,9 @@ def get_udemy_links(target_url, day_limit, page_limit, sleep_prd):
     course_names, course_links = get_tricksinfo_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit)
     
     button_links =[]
+
+    if len(course_links):
+        print(f"")
 
     for i in range(len(course_links)):
         try:
@@ -198,7 +212,7 @@ def get_udemy_links(target_url, day_limit, page_limit, sleep_prd):
             button_links.append("Error")
             print(f"\nCouldn't open '{course_links[i]}'.\nError is {e}")
     
-    course_names, course_links = clean_course_list(course_names, course_links)
+    course_names, course_links = clean_course_list(course_names, button_links)
     return course_names, course_links
 
 def open_tabs(target_url, day_limit, page_limit, sleep_prd):
@@ -207,12 +221,16 @@ def open_tabs(target_url, day_limit, page_limit, sleep_prd):
     
     course_names.reverse()
     course_links.reverse()
-    print(f"\n")
+
+    if len(course_links):
+        print(f"")
+    else:
+        print(f"\nNo New Courses!")
     
     for i in range(len(course_links)):
         try:
-            #time.sleep(sleep_prd)
-            #webbrowser.open_new(course_links[i])
+            time.sleep(sleep_prd)
+            webbrowser.open_new(course_links[i])
             response = write_all_courses(course_name=course_names[i], course_link=course_links[i])
             if response == 1 :
                 print(f"\nThe tab was opened but course details couldn't be added to processed_courses.txt. Please add the next line manually:\n{course_names[i]} --- {course_links[i]}\n")
