@@ -1,8 +1,15 @@
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import NoSuchElementException
-import time, requests, webbrowser, html
+import time, requests, webbrowser, html, re
 from datetime import date
+from bs4 import BeautifulSoup
+
+#Settings
+settings = {
+    "target_url" : "https://tricksinfo.net/page/{no}",
+    "day_limit" : 2,
+    "page_limit" : 1,
+    "sleep_prd" : 10,
+    "page_load_wait" : 6
+}
 
 def get_all_courses():
     try:
@@ -30,24 +37,39 @@ def write_all_courses(course_name, course_link):
     finally:
         course_names.close()
 
-def clean_course_list(all_course_names, course_names, course_links):
+def clean_course_list(course_names, course_links, all_course_names=None):
+    try:
+        for i in range(len(course_names)):
+            try:
+                if all_course_names:
+                    if(all_course_names.index(course_names[i])>=0):
+                        course_links[i]="Enrolled"
+            except ValueError:
+                pass    #print(f"Course not Enrolled: {course_names[i]}")       use this for detailed output
+            except Exception as e:
+                print(f"Error in checking against already enrolled courses for '{course_names[i]}'.\nError: {e}")
+        #Removing Enrolled and Expired courses
+        ##Somethings wrong here
+        # print("got here")
+        # print(len(course_names), len(course_links))
+        # print(course_names, course_links)
+        # course_names_temp, course_links_temp = zip(*((x, y) for x, y in zip(course_names, course_links) if "Enrolled" not in y and 'Expired' not in y))
+        # course_names=list(course_names_temp)
+        # course_links=list(course_links_temp)
+    except Exception as e:
+        print(f"\nError in cleaning course list.\nError is: {e}\n{type(e).__name__}\n")
+    finally:
+        return course_names, course_links
 
-    for i in range(len(course_names)):
-        try:
-            if(all_course_names.index(course_names[i])>=0):
-                course_links[i]="Enrolled"
-        except ValueError:
-            pass    #print(f"Course not Enrolled: {course_names[i]}")       use this for detailed output
-        except Exception as e:
-            print(f"Error in checking against already enrolled courses for '{course_names[i]}'.\nError: {e}")
-    #Removing Enrolled and Expired courses
-    course_names, course_links = zip(*((x, y) for x, y in zip(course_names, course_links) if "Enrolled" not in y and 'Expired' not in y))
-    return course_names, course_links
+def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
+    
+    if no>page_limit:        #Scrape only till page 5
+        print(f"\nPage Limit Exceeded. Stopping search\n")
+        return [],[]
+    
+    page = requests.get(target_url.format(no=no))     #Default Start is homepage
+    soup = BeautifulSoup(page.content, 'html.parser')
 
-def get_tricksinfo_links(wd, target_url, day_limit, page_limit=5, no=1):
-    
-    wd.get(target_url.format(no=no))     #Default Start is homepage
-    
     all_course_names = get_all_courses()
     if not all_course_names:
         all_course_names.append('')
@@ -58,27 +80,24 @@ def get_tricksinfo_links(wd, target_url, day_limit, page_limit=5, no=1):
     flag = []
     stop_flag = 0
 
-    if no>page_limit:        #Scrape only till page 5
-        return course_names,course_links
-
     try:
         #Get courses names and page links
-        courses = wd.find_elements_by_css_selector(".post-thumb")      #Specific selector for the image thumbnail which contains href
+        courses = soup.find_all('a', class_="post-thumb")      #Specific selector for the image thumbnail which contains href
         for course in courses:
-            if course.get_attribute('href'):
-                course_links.append(course.get_attribute('href'))
-            if course.get_attribute('aria-label'):
-                course_names.append("]".join(html.unescape(course.get_attribute('aria-label')).split(']')[1:]))     #Gets name, then splits it on ]. Since some names have [2020] in end, join the rest of split sections barring the first
+            if course.get('href'):
+                course_links.append(course.get('href'))
+            if course.get('aria-label'):
+                course_names.append(("]".join(re.sub(r'[^\x00-\x7F]+','-', str((course.get('aria-label')))).split(']')[1:])).strip())     #Gets name, then splits it on ]. Since some names have [2020] in end, join the rest of split sections barring the first
         
-        print(course_names)
-        print(f"\nPage no:{no}. Got course names")
+        print(f"\nPage no:{no}. Number of Courses Detected:{len(course_names)}")
+        print(f"Page no:{no}. Got course names")
 
         #Get date of post from url of thumbnail image
-        wp_image_urls = wd.find_elements_by_css_selector(".wp-post-image")
+        wp_image_urls = soup.find_all('img', class_="wp-post-image")
         for link in wp_image_urls:
-            if link.get_attribute('src'):
+            if link.get('src'):
                 try:
-                    course_dates.append(link.get_attribute('src').split('/')[-1].split('_')[1])
+                    course_dates.append(link.get('src').split('/')[-1].split('_')[1])
                 except Exception as e:
                     course_dates.append('error')        #any non int would do. This will trigger the date rectifier
         
@@ -134,57 +153,62 @@ def get_tricksinfo_links(wd, target_url, day_limit, page_limit=5, no=1):
         print(f"Page no:{no}. Checked last saved course")
 
         #Verify if course is already added
-        course_names, course_links = clean_course_list(all_course_names, course_names, course_links)
+        course_names, course_links = clean_course_list(course_names, course_links, all_course_names)
 
         print(f"Page no:{no}. Cleaned course list")
         print(f"Page no:{no}. Number of courses extracted: {len(course_links)}")
 
         #Get more links if needed
         if not stop_flag:
-            course_names_temp, course_links_temp = get_tricksinfo_links(wd, target_url, day_limit, page_limit, no=no+1)       #Increase by current page no and rerun
+            course_names_temp, course_links_temp = get_tricksinfo_links(target_url, day_limit, page_limit, no=no+1)       #Increase by current page no and rerun
             course_links += course_links_temp
             course_names += course_names_temp
         else:
-            print(f"\nStopping search. All non-expired/unenrolled courses indexed")
+            print(f"\nStopping search. All non-expired/unenrolled courses indexed\n")
+
     except Exception as e:
-        print(f"\nWebpage with url: {target_url.format(no=no)} had an error.\nError: {e}")
+        print(f"\nWebpage with url: {target_url.format(no=no)} had an error.\nError: {e}\n")
     finally:
         return course_names,course_links
 
-def get_udemy_links(wd, target_url, day_limit, page_limit, sleep_prd):
+def get_udemy_links(target_url, day_limit, page_limit, sleep_prd):
 
-    course_names, course_links = get_tricksinfo_links(wd, target_url=target_url, day_limit=day_limit, page_limit=page_limit)
-    print(f"\nTotal Number of course links recieved: {len(course_links)}\n")
+    course_names, course_links = get_tricksinfo_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit)
     
     button_links =[]
 
     for i in range(len(course_links)):
         try:
-            time.sleep(sleep_prd)
-            wd.execute_script(f"window.open('{course_links[i]}')")
-            wd.close()
-            wd.switch_to.window(wd.window_handles[0])
-            try:
-                buttons = wd.find_elements_by_css_selector(".wp-block-button__link")
-                for button in buttons:
-                    if button.get_attribute('href'):
-                        button_links.append(button.get_attribute('href')) 
-                print(f"Extracting Udemy Links: {i+1}/{len(course_links)}",end='\r')
-            except Exception as e:
+            if "Enrolled" not in course_links[i] and 'Expired' not in course_links[i]:
+                time.sleep(sleep_prd)
+                page = requests.get(course_links[i])     #Default Start is homepage
+                soup = BeautifulSoup(page.content, 'html.parser')
+                try:
+                    buttons = soup.find_all('a', class_="wp-block-button__link")
+                    for button in buttons:
+                        if button.get('href'):
+                            button_links.append(button.get('href')) 
+                    print(f"Extracting Udemy Links: {i+1}/{len(course_links)}",end='\r')
+                except Exception as e:
+                    button_links.append("Error")
+                    print(f"\nCouldn't retrieve link from ENROLL button for {buttons[0]}.\nError: {e}")
+            else:
                 button_links.append("Error")
-                print(f"\nCouldn't retrieve link from ENROLL button for {buttons[0]}.\nError: {e}")
         except Exception as e:
             button_links.append("Error")
             print(f"\nCouldn't open '{course_links[i]}'.\nError is {e}")
     
-    course_names, course_links = zip(*((x, y) for x, y in zip(course_names, button_links) if "Error" not in y))
+    course_names, course_links = clean_course_list(course_names, course_links)
     return course_names, course_links
 
-def open_tabs(wd, target_url, day_limit, page_limit, sleep_prd):
-    course_names, course_links = get_udemy_links(wd=wd, target_url=target_url, day_limit=day_limit, page_limit=page_limit, sleep_prd=sleep_prd)
-    wd.close()
-    print(f"\n")
+def open_tabs(target_url, day_limit, page_limit, sleep_prd):
 
+    course_names, course_links = get_udemy_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit, sleep_prd=sleep_prd)
+    
+    course_names.reverse()
+    course_links.reverse()
+    print(f"\n")
+    
     for i in range(len(course_links)):
         try:
             #time.sleep(sleep_prd)
@@ -199,17 +223,13 @@ def open_tabs(wd, target_url, day_limit, page_limit, sleep_prd):
 
 def main():
     #Settings
-    profile = webdriver.FirefoxProfile(profile_directory="C:\\Users\\home\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles\\quet6ama.Web-Scraping")
-    driver_path = "geckodriver.exe"
-    target_url = "https://tricksinfo.net/page/{no}"
-    day_limit = 2
-    page_limit = 1
-    sleep_prd = 10
-    page_load_wait = 6
+    target_url = settings["target_url"]
+    day_limit = settings["day_limit"]
+    page_limit = settings["page_limit"]
+    sleep_prd = settings["sleep_prd"]
+    page_load_wait = settings["page_load_wait"]
 
-    with webdriver.Firefox(firefox_profile=profile, executable_path=driver_path) as wd :
-        wd.implicitly_wait(page_load_wait)      #Waits if anything is not loaded in DOM
-        open_tabs(wd, target_url, day_limit, page_limit, sleep_prd)
+    open_tabs(target_url, day_limit, page_limit, sleep_prd)
     
     print(f"\nExiting. Bye")
 
