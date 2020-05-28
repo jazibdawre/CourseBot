@@ -18,6 +18,8 @@ settings = {
     "open_tab" : True,
     "day_limit" : 1,
     "page_limit" : 5,
+    "min_rating" : 3.7,
+    "new_courses" : True,
     "sleep_prd" : 10,
     "page_load_wait" : 6
 }
@@ -44,16 +46,21 @@ def get_all_courses():
         course_names.close()
         return courses_list
 
-def write_all_courses(course_name, course_link):
-    try:
-        course_names = open('./processed_courses.txt','a')
-        course_names.write(f"\n{course_name} --- {course_link}")      #Write course name and link
-        return 0
-    except Exception as e:
-        print(f"Error in Writing name and list of last processed course.\nError is: {e}")
-        return 1
-    finally:
-        course_names.close()
+def write_all_courses(course_names, course_links):
+
+    if len(course_links):
+        course_list = open('./processed_courses.txt','a')
+        for i in range(len(course_links)):
+            try:
+                course_list.write(f"\n{course_names[i]} --- {course_links[i]}")      #Write course name and link
+                flag = 0
+            except Exception as e:
+                print(f"\nError in Writing name and list of last processed course.\nError is: {e}")
+                flag = 1
+            if flag == 1 :
+                print(f"\nThe tab was opened but course details couldn't be added to processed_courses.txt. Please add the next line manually:\n{course_names[i]} --- {course_links[i]}\n")
+        print(f"\nCourse details written to processed_courses.txt")
+        course_list.close()
 
 def clean_course_list(course_names, course_links, all_course_names=None):
     try:
@@ -204,7 +211,7 @@ def get_udemy_links(target_url, day_limit, page_limit, sleep_prd):
         try:
             if "Enrolled" not in course_links[i] and 'Expired' not in course_links[i]:
                 time.sleep(sleep_prd)
-                page = get_page(course_links[i])     #Default Start is homepage
+                page = get_page(course_links[i])
                 soup = BeautifulSoup(page, 'html.parser')
                 try:
                     buttons = soup.find_all('a', class_="wp-block-button__link")
@@ -220,13 +227,67 @@ def get_udemy_links(target_url, day_limit, page_limit, sleep_prd):
         except Exception as e:
             button_links.append("Error")
             print(f"\nCouldn't open '{course_links[i]}'.\nError is {e}")
-    
+
     course_names, course_links = clean_course_list(course_names, button_links)
+    write_all_courses(course_names, course_links)       #Write Details of all processed courses
     return course_names, course_links
 
-def open_tabs(target_url, day_limit, page_limit, sleep_prd, open_tab):
+def filter_udemy_links(target_url, day_limit, page_limit, min_rating, new_courses, sleep_prd=5):
 
-    course_names, course_links = get_udemy_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit, sleep_prd=sleep_prd)
+    course_names, course_links =  get_udemy_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit, sleep_prd=sleep_prd)
+    
+    if len(course_links):
+        print(f"")
+
+    for i in range(len(course_links)):
+        try:
+            if "Enrolled" not in course_links[i] and 'Expired' not in course_links[i]:
+                time.sleep(sleep_prd)
+                page = get_page(course_links[i])
+                soup = BeautifulSoup(page, 'html.parser')
+                try:
+                    #This block works for most cases
+                    ratings = soup.find_all('span', class_="tooltip-container")
+                    if ratings:
+                        try:
+                            rating = float(ratings[0].contents[1].get_text())
+                            print(rating)
+                            if rating <= min_rating :
+                                if not new_courses==True and rating==0.0:
+                                    course_links[i] = "Expired"
+                        except ValueError:
+                            print(f"\nUdemy Normal Page has changed. Please Update the script\n")
+                        except Exception as e:
+                            print(f"\nUdemy Normal Page has changed. Please Update the script\nError is: {e}")
+                    #If Udemy opens a lite version of the page, this will work
+                    ratings = soup.find_all('span', attrs={"data-purpose": "rating-number"})
+                    if ratings:
+                        try:
+                            rating = float(ratings[0].get_text())
+                            print(rating)
+                            if rating <= min_rating :
+                                if not new_courses==True and rating==0.0:
+                                    course_links[i] = "Expired"
+                        except ValueError:
+                            print(f"\nUdemy Lite Page has changed. Please Update the script\n")
+                        except Exception as e :
+                            print(f"\nUdemy Lite Page has changed. Please Update the script\nError is: {e}")
+                    print(f"Cleaning Udemy Links: {i+1}/{len(course_links)}",end='\r')
+                except Exception as e:
+                    course_links[i] = "Error"
+                    print(f"\nCouldn't read rating from '{course_links[i]}'.\nError is {e}")
+            else:
+                course_links[i] = "Error"
+        except Exception as e:
+            course_links[i] = "Error"
+            print(f"\nCouldn't open '{course_links[i]}'.\nError is {e}")
+    
+    course_names, course_links = clean_course_list(course_names, course_links)
+    return course_names, course_links
+
+def open_tabs(target_url, day_limit, page_limit, min_rating, new_courses, sleep_prd, open_tab):
+
+    course_names, course_links = filter_udemy_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit, min_rating=min_rating, new_courses=new_courses,  sleep_prd=sleep_prd)
     
     course_names.reverse()
     course_links.reverse()
@@ -247,12 +308,9 @@ def open_tabs(target_url, day_limit, page_limit, sleep_prd, open_tab):
                 webbrowser.open_new(course_links[i])
             else:
                 print(f"\n{course_links[i]}")
-            response = write_all_courses(course_name=course_names[i], course_link=course_links[i])
-            if response == 1 :
-                print(f"\nThe tab was opened but course details couldn't be added to processed_courses.txt. Please add the next line manually:\n{course_names[i]} --- {course_links[i]}\n")
         except Exception as e:
             print(f"\nError while opening Udemy link in browser.\nError is: {e}")
-    print(f"\nAll links opened and course details written to processed_courses.txt")
+    print(f"\nAll links opened")
 
 def main():
     #Settings
@@ -260,10 +318,12 @@ def main():
     open_tab = settings["open_tab"]
     day_limit = settings["day_limit"]
     page_limit = settings["page_limit"]
+    min_rating = settings["min_rating"]
+    new_courses = settings["new_courses"]
     sleep_prd = settings["sleep_prd"]
     page_load_wait = settings["page_load_wait"]
 
-    open_tabs(target_url, day_limit, page_limit, sleep_prd, open_tab)
+    open_tabs(target_url, day_limit, page_limit, min_rating, new_courses, sleep_prd, open_tab)
     
     print(f"\nExiting. Bye")
 
