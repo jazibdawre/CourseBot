@@ -3,22 +3,31 @@
     File name: course_scraper.py
     Author: Jazib Dawre <jazibdawre@gmail.com>
     Date created: 28/05/2020
-    Date last modified: 28/05/2020
-    Python Version: 3.8
+    Description: This is a webcrawler which indexes https://tricksinfo.net/, extracts the coupon codes and opens the udemy course links.
+    Python Version: >= 3.6  (Tested on 3.8.0)
 '''
 
-import time, requests, webbrowser, re
+import time, webbrowser, re, urllib.request
 from datetime import date
 from bs4 import BeautifulSoup
 
 #Settings
 settings = {
     "target_url" : "https://tricksinfo.net/page/{no}",
-    "day_limit" : 2,
-    "page_limit" : 1,
+    "user_agent" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:76.0) Gecko/20100101 Firefox/76.0",
+    "open_tab" : True,
+    "day_limit" : 1,
+    "page_limit" : 5,
     "sleep_prd" : 10,
     "page_load_wait" : 6
 }
+
+def get_page(url):
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': settings["user_agent"]})
+        return  urllib.request.urlopen(req).read().decode('utf-8')
+    except Exception as e:
+        print(f"Error in retrieving webpage: {url}.\nError is {e}")
 
 def get_all_courses():
     try:
@@ -78,8 +87,8 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
         print(f"\nPage Limit Exceeded. Stopping search")
         return [],[]
     
-    page = requests.get(target_url.format(no=no))     #Default Start is homepage
-    soup = BeautifulSoup(page.content, 'html.parser')
+    page = get_page(target_url.format(no=no))     #Default Start is homepage
+    soup = BeautifulSoup(page, 'html.parser')
 
     all_course_names = get_all_courses()
     if not all_course_names:
@@ -195,8 +204,8 @@ def get_udemy_links(target_url, day_limit, page_limit, sleep_prd):
         try:
             if "Enrolled" not in course_links[i] and 'Expired' not in course_links[i]:
                 time.sleep(sleep_prd)
-                page = requests.get(course_links[i])     #Default Start is homepage
-                soup = BeautifulSoup(page.content, 'html.parser')
+                page = get_page(course_links[i])     #Default Start is homepage
+                soup = BeautifulSoup(page, 'html.parser')
                 try:
                     buttons = soup.find_all('a', class_="wp-block-button__link")
                     for button in buttons:
@@ -215,13 +224,16 @@ def get_udemy_links(target_url, day_limit, page_limit, sleep_prd):
     course_names, course_links = clean_course_list(course_names, button_links)
     return course_names, course_links
 
-def open_tabs(target_url, day_limit, page_limit, sleep_prd):
+def open_tabs(target_url, day_limit, page_limit, sleep_prd, open_tab):
 
     course_names, course_links = get_udemy_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit, sleep_prd=sleep_prd)
     
     course_names.reverse()
     course_links.reverse()
 
+    if not open_tab:
+        print(f"\nOpening Udemy links in browser has been set to False, this can be changed in the settings dictionary.\nUdemy Links will be printed in terminal")
+    
     if len(course_links):
         print(f"")
     else:
@@ -229,12 +241,15 @@ def open_tabs(target_url, day_limit, page_limit, sleep_prd):
     
     for i in range(len(course_links)):
         try:
-            time.sleep(sleep_prd)
-            webbrowser.open_new(course_links[i])
+            if open_tab:
+                time.sleep(sleep_prd)
+                print(f"Opening Udemy Links: {i+1}/{len(course_links)}",end='\r')
+                webbrowser.open_new(course_links[i])
+            else:
+                print(f"\n{course_links[i]}")
             response = write_all_courses(course_name=course_names[i], course_link=course_links[i])
             if response == 1 :
                 print(f"\nThe tab was opened but course details couldn't be added to processed_courses.txt. Please add the next line manually:\n{course_names[i]} --- {course_links[i]}\n")
-            print(f"Opening Udemy Links: {i+1}/{len(course_links)}",end='\r')
         except Exception as e:
             print(f"\nError while opening Udemy link in browser.\nError is: {e}")
     print(f"\nAll links opened and course details written to processed_courses.txt")
@@ -242,12 +257,13 @@ def open_tabs(target_url, day_limit, page_limit, sleep_prd):
 def main():
     #Settings
     target_url = settings["target_url"]
+    open_tab = settings["open_tab"]
     day_limit = settings["day_limit"]
     page_limit = settings["page_limit"]
     sleep_prd = settings["sleep_prd"]
     page_load_wait = settings["page_load_wait"]
 
-    open_tabs(target_url, day_limit, page_limit, sleep_prd)
+    open_tabs(target_url, day_limit, page_limit, sleep_prd, open_tab)
     
     print(f"\nExiting. Bye")
 
