@@ -230,7 +230,7 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
         for course_name in course_names:
             try:
                 if (all_course_names[-1] == course_name):
-                    print(f" Page no:{no}. Last saved course matched:\n {course_name[:78]}")
+                    print(f" Page no:{no}. Processed course found: {course_name[:41]}..")
                     stop_flag=1
                     break
             except:
@@ -288,7 +288,7 @@ def get_udemy_links(target_url, day_limit, page_limit, sleep_prd):
             print(f"\n Couldn't open '{course_links[i]}'.\n Error is {e}")
     
     if len(course_links):
-        print(f"\n")
+        print(f"")
 
     course_names, course_links = clean_course_list(course_names, button_links)
     course_names.reverse()
@@ -394,7 +394,9 @@ def main():
     print(f"""
                              CourseBot v1.3.0
  ==============================================================================
+ https://github.com/jazibdawre/Course-Scraper                       MIT License
  Author: Jazib Dawre <jazibdawre@gmail.com>                 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+ ==============================================================================
 
  Current Preferences:
  Base Url :                      {target_url.format(no="")}
