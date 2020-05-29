@@ -3,14 +3,15 @@
 '''
     File name: CourseBot.py
     Author: Jazib Dawre <jazibdawre@gmail.com>
-    Version: 1.3.0
+    Version: 1.4.0
     Date created: 28/05/2020
+    License: MIT License
     Description: This is a webcrawler which indexes https://tricksinfo.net/,
                  extracts the coupon codes and opens the udemy course links.
     Python Version: >= 3.6  (Tested on 3.8.0)
 '''
 #================================================================================
-import time, webbrowser, re, urllib.request, urllib.robotparser, sys
+import time, webbrowser, re, requests
 from datetime import date, datetime
 from bs4 import BeautifulSoup
 #================================================================================
@@ -18,8 +19,8 @@ from bs4 import BeautifulSoup
 
 "target_url"    Do not change. This is the base url
 
-"user_agent"    Tricksinfo actively blocks urllib user agent. We pretend
-                to be Mozilla Firefox. Use any valid UA string you like
+"user_agent"    We pretend to be this in stealth mode.
+                Use any valid UA string you like
 
 "day_limit"     Course older than this value will be marked expired
 
@@ -28,12 +29,7 @@ from bs4 import BeautifulSoup
 
 "min_rating"    Minimum udemy rating below which to discard courses
 
-"min_reviewers"  Ratio of Course Rating/No of ratings.
-                It affects the first two of the following cases:
-                High Rating/High Users - Enroll - Will pass this ratio check
-                High Rating/Low Users - Discard - Will fail this ratio check
-                Low Rating/High Users - Discard - Will fail min_raiting check
-                Low Rating/Low Users - Discard - Will fail min_rating check
+"min_reviewers"  Minimum number of reviewers below which to discard courses
 
 "sleep_prd"     Time to sleep before sending http requests. Low value makes
                 the code runs faster but may overload destination server.
@@ -42,9 +38,9 @@ from bs4 import BeautifulSoup
 
 "new_courses"   Wether to consider enrolling in new courses
 
-"good_robot"    Will ask for robots.txt file from server and follow the rules.
-                Since tricksinfo actively blocks bots, better to keep this 
-                off to avoid suspicion
+"stealth"       When enabled the bot will identify as the user-agent defined in
+                the settings dictionary (default firefox). The bot will not ask
+                for robots.txt file from the server to avoid suspicion.
 
 "open_tab"      Wether to open the final udemy links in the default browser
 '''
@@ -58,29 +54,29 @@ settings = {
     "min_reviewers" : 1,
     "sleep_prd" : 10,
     "new_courses" : True,
-    "good_robot" : False,
-    "open_tab" : False
+    "stealth" : False,
+    "open_tab" : True
 }
 
 def get_page(url):
-
-    rp = urllib.robotparser.RobotFileParser()
-
-    if settings["good_robot"]:
-        robots_url="/".join(url.split('/')[:3])+"/robots.txt"
-        rp.set_url(robots_url)
-        rp.read()
-    else:
-        def say_yes(a=None,b=None) :
-            return True
-        rp.can_fetch = say_yes
-
+        
     try:
-        if rp.can_fetch("*", url):
-            req = urllib.request.Request(url, headers={'User-Agent': settings["user_agent"]})
-            return  urllib.request.urlopen(req).read().decode('utf-8')
+        #Sending request
+        if settings["stealth"]:
+            headers={'User-Agent': settings["user_agent"]}
+            response = requests.get(url, headers=headers)
         else:
-            print(f"\n Respecting robots.txt, Not permitted to access url\nMost likely robots.txt changed at {robots_url}. Update script")
+            robots_url="/".join(url.split('/')[:3])+"/robots.txt"
+            if True:    #Add robots.txt check
+                response = requests.get(url)
+            else:
+                print(f"\n Respecting robots.txt, Not permitted to access {url}\n Most likely robots.txt changed at {robots_url}. Update script\n")
+                return ""
+        #Recieving request
+        if response.status_code == 200:
+            return response.content.decode('utf-8')
+        else:
+            print(f"\n Error fetching webpage. Response status: {response.status_code}")
             return ""
     except Exception as e:
         print(f" Error in retrieving webpage: {url}.\n Error is {e}")
@@ -92,6 +88,7 @@ def get_all_courses():
         courses_list = [course.split(' --- ')[0] for course in courses_list if course != '' and course[0] != '#']
     except IOError:
         course_names = open('./processed_courses.txt','w')
+        course_names.write("#List of processed Courses. Comments start with #")
         courses_list = []
     except Exception as e:
         print(f" Error in reading name of last processed course: {e}")
@@ -153,6 +150,9 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
     
     print(f" Page no:{no}. Fetching Page", end='\r')
     page = get_page(target_url.format(no=no))     #Default Start is homepage
+    if page=="":
+        print(" Page no:{no}. Stopping search")
+        return [],[]
     soup = BeautifulSoup(page, 'html.parser')
     print(f" Page no:{no}. Page Fetched Successfully")
 
@@ -389,17 +389,19 @@ def main():
     min_rating = settings["min_rating"]
     min_reviewers = settings["min_reviewers"]
     new_courses = settings["new_courses"]
+    stealth = settings["stealth"]
     sleep_prd = settings["sleep_prd"]
 
     print(f"""
-                             CourseBot v1.3.0
+                             CourseBot v1.4.0
  ==============================================================================
- https://github.com/jazibdawre/Course-Scraper                       MIT License
+ Github: github.com/jazibdawre/Course-Scraper                       MIT License
  Author: Jazib Dawre <jazibdawre@gmail.com>                 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
  ==============================================================================
 
  Current Preferences:
  Base Url :                      {target_url.format(no="")}
+ Stealth Mode :                  {stealth}
  Open Links in Browser :         {open_tab}
  Day Limit :                     {day_limit}
  Page limit :                    {page_limit}
@@ -417,17 +419,25 @@ def main():
 
     open_tabs(target_url, day_limit, page_limit, min_rating, min_reviewers, new_courses, sleep_prd, open_tab)
 
-
 if __name__=='__main__':
     try:
         tic = time.time()
         main()
     except KeyboardInterrupt:
-        print("\n\n Ctrl+C Recieved")
+        print("\n\n A Ctrl+C can't stop me you meager mortal")
+        for i in range(1,4):
+            time.sleep(1)
+            print(" (evil laugh)"+ " Ha "*i, end="\r")
+        time.sleep(1)
+        print("\n An anime type story needs to be written here. If you have any ideas do tell .-.")
+        time.sleep(5)
+        print(" And yeah the bot has stopped don't worry...")
+        time.sleep(3)
+        print(" I should probably stop wasting more time")
+        time.sleep(3)
     except Exception as e:
         print(f"\n Uncaught Exception propogated out of master.\n Error is {type(e).__name__}: {e}")
     finally:
         toc = time.time()
         print(f"\n Exiting. Bye")
         print(f" ==============================================================================\n CourseBot executed in {toc-tic} seconds")
-        sys.exit(0)
