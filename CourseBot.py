@@ -1,35 +1,89 @@
 #!/usr/bin/env python3
+#================================================================================
 '''
-    File name: course_scraper.py
+    File name: CourseBot.py
     Author: Jazib Dawre <jazibdawre@gmail.com>
+    Version: 1.3.0
     Date created: 28/05/2020
-    Description: This is a webcrawler which indexes https://tricksinfo.net/, extracts the coupon codes and opens the udemy course links.
+    Description: This is a webcrawler which indexes https://tricksinfo.net/,
+                 extracts the coupon codes and opens the udemy course links.
     Python Version: >= 3.6  (Tested on 3.8.0)
 '''
-
-import time, webbrowser, re, urllib.request
-from datetime import date
+#================================================================================
+import time, webbrowser, re, urllib.request, urllib.robotparser, sys
+from datetime import date, datetime
 from bs4 import BeautifulSoup
+#================================================================================
+'''Settings
 
-#Settings
+"target_url"    Do not change. This is the base url
+
+"user_agent"    Tricksinfo actively blocks urllib user agent. We pretend
+                to be Mozilla Firefox. Use any valid UA string you like
+
+"day_limit"     Course older than this value will be marked expired
+
+"page_limit"    Tricksinfo page number after which courses will be marked
+                as expired. Each page has 10 courses.
+
+"min_rating"    Minimum udemy rating below which to discard courses
+
+"min_reviewers"  Ratio of Course Rating/No of ratings.
+                It affects the first two of the following cases:
+                High Rating/High Users - Enroll - Will pass this ratio check
+                High Rating/Low Users - Discard - Will fail this ratio check
+                Low Rating/High Users - Discard - Will fail min_raiting check
+                Low Rating/Low Users - Discard - Will fail min_rating check
+
+"sleep_prd"     Time to sleep before sending http requests. Low value makes
+                the code runs faster but may overload destination server.
+                Too low a value and the server may mistake your requests for 
+                a DOS attempt. Your IP may be blocked.
+
+"new_courses"   Wether to consider enrolling in new courses
+
+"good_robot"    Will ask for robots.txt file from server and follow the rules.
+                Since tricksinfo actively blocks bots, better to keep this 
+                off to avoid suspicion
+
+"open_tab"      Wether to open the final udemy links in the default browser
+'''
+#================================================================================
 settings = {
     "target_url" : "https://tricksinfo.net/page/{no}",
     "user_agent" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:76.0) Gecko/20100101 Firefox/76.0",
-    "open_tab" : True,
-    "day_limit" : 1,
-    "page_limit" : 5,
+    "day_limit" : 3,
+    "page_limit" : 2,
     "min_rating" : 3.7,
-    "new_courses" : True,
+    "min_reviewers" : 1,
     "sleep_prd" : 10,
-    "page_load_wait" : 6
+    "new_courses" : True,
+    "good_robot" : False,
+    "open_tab" : False
 }
 
 def get_page(url):
+
+    rp = urllib.robotparser.RobotFileParser()
+
+    if settings["good_robot"]:
+        robots_url="/".join(url.split('/')[:3])+"/robots.txt"
+        rp.set_url(robots_url)
+        rp.read()
+    else:
+        def say_yes(a=None,b=None) :
+            return True
+        rp.can_fetch = say_yes
+
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': settings["user_agent"]})
-        return  urllib.request.urlopen(req).read().decode('utf-8')
+        if rp.can_fetch("*", url):
+            req = urllib.request.Request(url, headers={'User-Agent': settings["user_agent"]})
+            return  urllib.request.urlopen(req).read().decode('utf-8')
+        else:
+            print(f"\n Respecting robots.txt, Not permitted to access url\nMost likely robots.txt changed at {robots_url}. Update script")
+            return ""
     except Exception as e:
-        print(f"Error in retrieving webpage: {url}.\nError is {e}")
+        print(f" Error in retrieving webpage: {url}.\n Error is {e}")
 
 def get_all_courses():
     try:
@@ -40,7 +94,7 @@ def get_all_courses():
         course_names = open('./processed_courses.txt','w')
         courses_list = []
     except Exception as e:
-        print(f"Error in reading name of last processed course: {e}")
+        print(f" Error in reading name of last processed course: {e}")
         courses_list = []
     finally:
         course_names.close()
@@ -50,16 +104,17 @@ def write_all_courses(course_names, course_links):
 
     if len(course_links):
         course_list = open('./processed_courses.txt','a')
+        course_list.write(f"\n\n#{date.today()} : Writing {len(course_links)} course details to file")
         for i in range(len(course_links)):
             try:
                 course_list.write(f"\n{course_names[i]} --- {course_links[i]}")      #Write course name and link
                 flag = 0
             except Exception as e:
-                print(f"\nError in Writing name and list of last processed course.\nError is: {e}")
+                print(f" Error in Writing name and list of last processed course.\n Error is: {e}")
                 flag = 1
             if flag == 1 :
-                print(f"\nThe tab was opened but course details couldn't be added to processed_courses.txt. Please add the next line manually:\n{course_names[i]} --- {course_links[i]}\n")
-        print(f"\nCourse details written to processed_courses.txt")
+                print(f"\n The tab was opened but course details couldn't be added to processed_courses.txt. Please add the next line manually:\n{course_names[i]} --- {course_links[i]}\n")
+        print(f"\n Course details written to processed_courses.txt")
         course_list.close()
 
 def clean_course_list(course_names, course_links, all_course_names=None):
@@ -70,9 +125,9 @@ def clean_course_list(course_names, course_links, all_course_names=None):
                     if(all_course_names.index(course_names[i])>=0):
                         course_links[i]="Enrolled"
             except ValueError:
-                pass    #print(f"Course not Enrolled: {course_names[i]}")       use this for detailed output
+                pass    #print(f" Course not Enrolled: {course_names[i]}")       use this for detailed output
             except Exception as e:
-                print(f"Error in checking against already enrolled courses for '{course_names[i]}'.\nError: {e}")
+                print(f" Error in checking against already enrolled courses for '{course_names[i]}'.\n Error: {e}")
         
         #Removing Enrolled and Expired courses
         try:
@@ -82,20 +137,24 @@ def clean_course_list(course_names, course_links, all_course_names=None):
         except ValueError:
             course_names, course_links = [], []
         except Exception as e:
-            print(f"\nError in zip cleaning coursr list.\nError is: {e}")
+            print(f" Error in zip cleaning coursr list.\n Error is: {e}")
     except Exception as e:
-        print(f"\nError in cleaning course list.\nError is: {e}")
+        print(f" Error in cleaning course list.\n Error is: {e}")
     finally:
         return course_names, course_links
 
 def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
     
     if no>page_limit:        #Scrape only till page 5
-        print(f"\nPage Limit Exceeded. Stopping search")
+        print(f"\n Page Limit Exceeded. Stopping search")
         return [],[]
+    else:
+        print(f"")
     
+    print(f" Page no:{no}. Fetching Page", end='\r')
     page = get_page(target_url.format(no=no))     #Default Start is homepage
     soup = BeautifulSoup(page, 'html.parser')
+    print(f" Page no:{no}. Page Fetched Successfully")
 
     all_course_names = get_all_courses()
     if not all_course_names:
@@ -116,8 +175,8 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
             if course.get('aria-label'):
                 course_names.append(("]".join(re.sub(r'[^\x00-\x7F]+','-', str((course.get('aria-label')))).split(']')[1:])).strip())     #Gets name, then splits it on ]. Since some names have [2020] in end, join the rest of split sections barring the first
         
-        print(f"\nPage no:{no}. Number of Courses Detected:{len(course_names)}")
-        print(f"Page no:{no}. Got course names")
+        print(f" Page no:{no}. Number of Courses Detected:{len(course_names)}")
+        print(f" Page no:{no}. Got course names")
 
         #Get date of post from url of thumbnail image
         wp_image_urls = soup.find_all('img', class_="wp-post-image")
@@ -128,7 +187,7 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
                 except Exception as e:
                     course_dates.append('error')        #any non int would do. This will trigger the date rectifier
         
-        print(f"Page no:{no}. Got course dates")
+        print(f" Page no:{no}. Got course dates")
 
         #Apparently tricksinfo has random naming styles for their images. Hence setting invalid dates to nearest value
         flag = [0]*len(course_dates)
@@ -142,7 +201,7 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
                 except IndexError:      #Shouldn't be needed but just in case
                     pass    #Date is invalid. Let flag be set to 0
                 except Exception as e:
-                    print(f"Date {course_dates[i]} couldn't be resolved.\nError: {e}")
+                    print(f" Date {course_dates[i]} couldn't be resolved.\nError: {e}")
             for i in range(len(course_dates)):
                 if flag[i]==0:
                     for j in range(len(course_dates)):
@@ -152,9 +211,9 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
                         else:
                             course_dates[i] = 20200501      #Random value. aka skip if used as page check reference
         except Exception as e:
-            print(f"Error in rectifying dates.\nError: {e}")
+            print(f" Error in rectifying dates.\nError: {e}")
         
-        print(f"Page no:{no}. Rectified dates of courses")
+        print(f" Page no:{no}. Rectified dates of courses")
         
         #Use Date to find course to stop at
         for i in range(len(course_links)):
@@ -165,25 +224,25 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
             for j in range(i,len(course_links)):
                 course_links[j] = "Expired"
 
-        print(f"Page no:{no}. Checked dates of course. Courses older than {day_limit} days are marked as expired")
+        print(f" Page no:{no}. Courses older than {day_limit} days are marked as expired")
 
         #Find last saved course to stop if found
         for course_name in course_names:
             try:
                 if (all_course_names[-1] == course_name):
-                    print(f"Page no:{no}. Last saved course matched: {course_name}")
+                    print(f" Page no:{no}. Last saved course matched:\n {course_name[:78]}")
                     stop_flag=1
                     break
             except:
                 continue        #Error will pop if there is problem in reading names of saved course. We can ignore
 
-        print(f"Page no:{no}. Checked last saved course")
+        print(f" Page no:{no}. Checked last saved course")
 
         #Verify if course is already added
         course_names, course_links = clean_course_list(course_names, course_links, all_course_names)
 
-        print(f"Page no:{no}. Cleaned course list")
-        print(f"Page no:{no}. Number of courses extracted: {len(course_links)}")
+        print(f" Page no:{no}. Cleaned course list")
+        print(f" Page no:{no}. Number of courses extracted: {len(course_links)}")
 
         #Get more links if needed
         if not stop_flag:
@@ -191,10 +250,10 @@ def get_tricksinfo_links(target_url, day_limit, page_limit=5, no=1):
             course_links += course_links_temp
             course_names += course_names_temp
         else:
-            print(f"\nStopping search. All non-expired/unenrolled courses indexed")
+            print(f"\n Stopping search. All non-expired/unenrolled courses indexed")
 
     except Exception as e:
-        print(f"\nWebpage with url: {target_url.format(no=no)} had an error.\nError: {e}\n")
+        print(f"\n Webpage with url: {target_url.format(no=no)} had an error.\nError: {e}\n")
     finally:
         return course_names,course_links
 
@@ -218,21 +277,26 @@ def get_udemy_links(target_url, day_limit, page_limit, sleep_prd):
                     for button in buttons:
                         if button.get('href'):
                             button_links.append(button.get('href')) 
-                    print(f"Extracting Udemy Links: {i+1}/{len(course_links)}",end='\r')
+                    print(f" Extracting Udemy Links: {i+1}/{len(course_links)}",end='\r')
                 except Exception as e:
                     button_links.append("Error")
-                    print(f"\nCouldn't retrieve link from ENROLL button for {buttons[0]}.\nError: {e}")
+                    print(f"\n Couldn't retrieve link from ENROLL button for {buttons[0]}.\nError: {e}")
             else:
                 button_links.append("Error")
         except Exception as e:
             button_links.append("Error")
-            print(f"\nCouldn't open '{course_links[i]}'.\nError is {e}")
+            print(f"\n Couldn't open '{course_links[i]}'.\n Error is {e}")
+    
+    if len(course_links):
+        print(f"\n")
 
     course_names, course_links = clean_course_list(course_names, button_links)
+    course_names.reverse()
+    course_links.reverse()
     write_all_courses(course_names, course_links)       #Write Details of all processed courses
     return course_names, course_links
 
-def filter_udemy_links(target_url, day_limit, page_limit, min_rating, new_courses, sleep_prd=5):
+def filter_udemy_links(target_url, day_limit, page_limit, min_rating, min_reviewers, new_courses, sleep_prd=5):
 
     course_names, course_links =  get_udemy_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit, sleep_prd=sleep_prd)
     
@@ -251,81 +315,117 @@ def filter_udemy_links(target_url, day_limit, page_limit, min_rating, new_course
                     if ratings:
                         try:
                             rating = float(ratings[0].contents[1].get_text())
-                            print(rating)
-                            if rating <= min_rating :
+                            if rating < min_rating :
                                 if not new_courses==True and rating==0.0:
                                     course_links[i] = "Expired"
+                            else:
+                                reviews = soup.find_all('span', class_="tooltip-container")
+                                if reviews:
+                                    reviewers = int((reviews[0].get_text()).split('(')[1].split(' ')[0].replace(",",""))
+                                    if reviewers < min_reviewers:
+                                        course_links[i] = "Expired"
                         except ValueError:
-                            print(f"\nUdemy Normal Page has changed. Please Update the script\n")
+                            print(f"\n Udemy Normal Page has changed. Please Update the script\n")
                         except Exception as e:
-                            print(f"\nUdemy Normal Page has changed. Please Update the script\nError is: {e}")
-                    #If Udemy opens a lite version of the page, this will work
+                            print(f"\n Udemy Normal Page has changed. Please Update the script\n Error is: {e}")
+
+                    #If Udemy opens a lite version of the page(idk why but it does), this will work
                     ratings = soup.find_all('span', attrs={"data-purpose": "rating-number"})
                     if ratings:
                         try:
                             rating = float(ratings[0].get_text())
-                            print(rating)
-                            if rating <= min_rating :
+                            if rating < min_rating :
                                 if not new_courses==True and rating==0.0:
                                     course_links[i] = "Expired"
+                            else:
+                                reviews = soup.find_all('div', attrs={"data-purpose": "rating"})
+                                if reviews:
+                                    reviewers = int((reviews[0].get_text()).split('(')[1].split(' ')[0].replace(",",""))
+                                    if reviewers < min_reviewers:
+                                        course_links[i] = "Expired"
                         except ValueError:
-                            print(f"\nUdemy Lite Page has changed. Please Update the script\n")
+                            print(f"\n Udemy Lite Page has changed. Please Update the script\n")
                         except Exception as e :
-                            print(f"\nUdemy Lite Page has changed. Please Update the script\nError is: {e}")
-                    print(f"Cleaning Udemy Links: {i+1}/{len(course_links)}",end='\r')
+                            print(f"\n Udemy Lite Page has changed. Please Update the script\n Error is: {e}")
+                    print(f" Filtering Udemy Links: {i+1}/{len(course_links)}",end='\r')
                 except Exception as e:
                     course_links[i] = "Error"
-                    print(f"\nCouldn't read rating from '{course_links[i]}'.\nError is {e}")
+                    print(f"\n Couldn't read rating from '{course_links[i]}'.\n Error is {e}")
             else:
                 course_links[i] = "Error"
         except Exception as e:
             course_links[i] = "Error"
-            print(f"\nCouldn't open '{course_links[i]}'.\nError is {e}")
+            print(f"\n Couldn't open '{course_links[i]}'.\n Error is {e}")
     
     course_names, course_links = clean_course_list(course_names, course_links)
     return course_names, course_links
 
-def open_tabs(target_url, day_limit, page_limit, min_rating, new_courses, sleep_prd, open_tab):
+def open_tabs(target_url, day_limit, page_limit, min_rating, min_reviewers, new_courses, sleep_prd, open_tab):
 
-    course_names, course_links = filter_udemy_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit, min_rating=min_rating, new_courses=new_courses,  sleep_prd=sleep_prd)
-    
-    course_names.reverse()
-    course_links.reverse()
-
-    if not open_tab:
-        print(f"\nOpening Udemy links in browser has been set to False, this can be changed in the settings dictionary.\nUdemy Links will be printed in terminal")
-    
+    course_names, course_links = filter_udemy_links(target_url=target_url, day_limit=day_limit, page_limit=page_limit, min_rating=min_rating, min_reviewers=min_reviewers, new_courses=new_courses,  sleep_prd=sleep_prd)
+        
     if len(course_links):
         print(f"")
+        for i in range(len(course_links)):
+            try:
+                if open_tab:
+                    time.sleep(sleep_prd)
+                    print(f" Opening Udemy Links: {i+1}/{len(course_links)}",end='\r')
+                    webbrowser.open_new(course_links[i])
+                else:
+                    pass
+                    #print(f"\n {course_links[i]}") will print udemy links in terminal. A bit messy so it's kept off
+            except Exception as e:
+                print(f"\n Error while opening Udemy link in browser.\n Error is: {e}")
+        print(f"\n All links opened")
     else:
-        print(f"\nNo New Courses!")
-    
-    for i in range(len(course_links)):
-        try:
-            if open_tab:
-                time.sleep(sleep_prd)
-                print(f"Opening Udemy Links: {i+1}/{len(course_links)}",end='\r')
-                webbrowser.open_new(course_links[i])
-            else:
-                print(f"\n{course_links[i]}")
-        except Exception as e:
-            print(f"\nError while opening Udemy link in browser.\nError is: {e}")
-    print(f"\nAll links opened")
+        print(f"\n No New Courses!")
 
 def main():
-    #Settings
     target_url = settings["target_url"]
     open_tab = settings["open_tab"]
     day_limit = settings["day_limit"]
     page_limit = settings["page_limit"]
     min_rating = settings["min_rating"]
+    min_reviewers = settings["min_reviewers"]
     new_courses = settings["new_courses"]
     sleep_prd = settings["sleep_prd"]
-    page_load_wait = settings["page_load_wait"]
 
-    open_tabs(target_url, day_limit, page_limit, min_rating, new_courses, sleep_prd, open_tab)
-    
-    print(f"\nExiting. Bye")
+    print(f"""
+                             CourseBot v1.3.0
+ ==============================================================================
+ Author: Jazib Dawre <jazibdawre@gmail.com>                 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+ Current Preferences:
+ Base Url :                      {target_url.format(no="")}
+ Open Links in Browser :         {open_tab}
+ Day Limit :                     {day_limit}
+ Page limit :                    {page_limit}
+ Minimum Rating :                {min_rating}
+ Minimum Reviewers :             {min_reviewers}
+ Enroll in new Courses :         {new_courses}
+ Sleep Period :                  {sleep_prd}
+
+ Preferences can be changed via the settings dictionary
+ """)
+    for i in range(10):
+        time.sleep(1)
+        print(f" Bot will initialize after {9-i} seconds, Press Ctrl+C to quit", end="\r")
+    print(f"\n\n Initializing...")
+
+    open_tabs(target_url, day_limit, page_limit, min_rating, min_reviewers, new_courses, sleep_prd, open_tab)
+
 
 if __name__=='__main__':
-    main()
+    try:
+        tic = time.time()
+        main()
+    except KeyboardInterrupt:
+        print("\n\n Ctrl+C Recieved")
+    except Exception as e:
+        print(f"\n Uncaught Exception propogated out of master.\n Error is {type(e).__name__}: {e}")
+    finally:
+        toc = time.time()
+        print(f"\n Exiting. Bye")
+        print(f" ==============================================================================\n CourseBot executed in {toc-tic} seconds")
+        sys.exit(0)
