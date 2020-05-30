@@ -15,36 +15,6 @@ import time, webbrowser, re, requests
 from datetime import date, datetime
 from bs4 import BeautifulSoup
 #================================================================================
-'''Settings
-
-"target_url"    Do not change. This is the base url
-
-"user_agent"    We pretend to be this in stealth mode.
-                Use any valid UA string you like
-
-"day_limit"     Course older than this value will be marked expired
-
-"page_limit"    Tricksinfo page number after which courses will be marked
-                as expired. Each page has 10 courses.
-
-"min_rating"    Minimum udemy rating below which to discard courses
-
-"min_reviewers"  Minimum number of reviewers below which to discard courses
-
-"sleep_prd"     Time to sleep before sending http requests. Low value makes
-                the code runs faster but may overload destination server.
-                Too low a value and the server may mistake your requests for 
-                a DOS attempt. Your IP may be blocked.
-
-"new_courses"   Wether to consider enrolling in new courses
-
-"stealth"       When enabled the bot will identify as the user-agent defined in
-                the settings dictionary (default firefox). The bot will not ask
-                for robots.txt file from the server to avoid suspicion.
-
-"open_tab"      Wether to open the final udemy links in the default browser
-'''
-#================================================================================
 settings = {
     "target_url" : "https://tricksinfo.net/page/{no}",
     "user_agent" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:76.0) Gecko/20100101 Firefox/76.0",
@@ -395,7 +365,7 @@ def main():
     print(f"""
                              CourseBot v1.4.0
  ==============================================================================
- Github: github.com/jazibdawre/Course-Scraper                       MIT License
+ Github: github.com/jazibdawre/CourseBot                            MIT License
  Author: Jazib Dawre <jazibdawre@gmail.com>                 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
  ==============================================================================
 
