@@ -26,32 +26,32 @@ pip install beautifulsoup4
 ## Settings
 These are the available options in the settings dictionary.
 ```
-"target_url"    This is the base url (Kept for future feature)
+"target_url"     This is the base url (Kept for future feature)
 
-"user_agent"    We pretend to be this in stealth mode. Use any valid UA string you like
+"user_agent"     We pretend to be this in stealth mode. Use any valid UA string you like
 
-"day_limit"     Course older than this value will be marked expired
+"day_limit"      Course older than this value will be marked expired
 
-"page_limit"    Tricksinfo page number after which courses will be marked as expired. Each page has 10 courses.
+"page_limit"     Tricksinfo page number after which courses will be marked as expired. Each page has 10 courses.
 
-"min_rating"    Minimum udemy rating below which to discard courses
+"min_rating"     Minimum udemy rating below which to discard courses
 
 "min_reviewers"  Minimum number of reviewers below which to discard courses
 
-"sleep_prd"     Time to sleep before sending http requests. Low values may cause traffic on the destination server and it may mistake your requests for a DOS attack
+"sleep_prd"      Time to sleep before sending http requests. Low values may cause traffic on the destination server and it may mistake your requests for a DOS attack
 
-"new_courses"   Wether to consider enrolling in new courses
+"new_courses"    Wether to consider enrolling in new courses
 
-"stealth"       When enabled the bot will identify as the user-agent defined in the settings dictionary (default firefox). The bot will not ask for robots.txt file from the server to avoid suspicion.
+"stealth"        When enabled the bot will identify as the user-agent defined in the settings dictionary (default firefox). The bot will not ask for robots.txt file from the server to avoid suspicion.
 
-"open_tab"      Wether to open the final udemy links in the default browser
+"open_tab"       Wether to open the final udemy links in the default browser
 ```
 
 ## Future improvements
 1. Add option to extract courses from individual categories.
 2. Check if the coupon has expired by applying it on udemy and discard expired courses
 
-For improvemen #1, change the `target_url` with
+For improvement #1, change the `target_url` with
 ```
 'https://tricksinfo.net/category/academics/page/' for Academics
 
